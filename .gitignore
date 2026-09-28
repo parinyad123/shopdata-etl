@@ -1,0 +1,18 @@
+*.txt
+!requirements.txt
+
+# Pipeline output
+analytics.db
+clean_customers.csv
+clean_orders.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Claude Code
+CLAUDE.md
+.claude/
