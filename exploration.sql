@@ -143,3 +143,38 @@ JOIN (
   ON c.customer_id = o.customer_id
 WHERE o.order_date < c.latest_signup_date
 ORDER BY o.customer_id, o.order_date;
+
+
+-- =====================================================================
+-- 3. EXCHANGE RATES (vw_exchange_rates)
+-- =====================================================================
+
+-- 3.1 Rate coverage per currency: which dates each currency has a rate for.
+SELECT
+    currency,
+    COUNT(*)   AS n_days,
+    MIN(date)  AS first_date,
+    MAX(date)  AS last_date
+FROM vw_exchange_rates
+GROUP BY currency
+ORDER BY currency;
+
+-- 3.2 Duplicate rates: more than one rate for the same currency and date
+--     would multiply order rows when joined.
+SELECT currency, date, COUNT(*) AS n_rates
+FROM vw_exchange_rates
+GROUP BY currency, date
+HAVING COUNT(*) > 1;
+
+-- 3.3 Non-USD orders with no matching rate for their order_date.
+--     Under the cleaning rule these fall back to USD, i.e. the raw amount
+--     is used as-is, which can badly misstate their USD value.
+SELECT o.order_id, o.order_date, o.total_amount, o.currency, o.status
+FROM vw_raw_orders AS o
+LEFT JOIN vw_exchange_rates AS r
+       ON r.currency = o.currency
+      AND r.date     = o.order_date
+WHERE o.currency IS NOT NULL
+  AND o.currency <> 'USD'
+  AND r.rate_to_usd IS NULL
+ORDER BY o.order_date;
