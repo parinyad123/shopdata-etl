@@ -60,3 +60,13 @@ def clean_customers(customers: pd.DataFrame) -> pd.DataFrame:
     deduped = deduplicate_customers(customers)
     with_emails = fill_missing_emails(deduped)
     return with_emails.assign(phone=standardize_phone(with_emails["phone"]))
+
+
+def filter_valid_orders(orders: pd.DataFrame) -> pd.DataFrame:
+    """Drop orders whose total_amount is zero, negative, or missing.
+
+    These rows are system errors. Filtering is based on the amount alone,
+    not on status, because some zero-amount orders are marked COMPLETED.
+    """
+    amounts = pd.to_numeric(orders["total_amount"], errors="coerce")
+    return orders[amounts > 0].reset_index(drop=True)

@@ -7,6 +7,7 @@ from transforms import (
     clean_customers,
     deduplicate_customers,
     fill_missing_emails,
+    filter_valid_orders,
     standardize_phone,
 )
 
@@ -126,3 +127,41 @@ class TestCleanCustomers:
         assert len(result) == 1
         assert result["email"].item() == "bob.jones@example.com"
         assert result["phone"].item() == "5559876543"
+
+
+class TestFilterValidOrders:
+    def test_drops_zero_and_negative_amounts(self):
+        orders = pd.DataFrame({"order_id": [1, 2, 3], "total_amount": [-50.0, 0.0, 150.0]})
+
+        result = filter_valid_orders(orders)
+
+        assert result["order_id"].tolist() == [3]
+
+    def test_drops_missing_amounts(self):
+        orders = pd.DataFrame({"order_id": [1, 2], "total_amount": [None, 10.0]})
+
+        result = filter_valid_orders(orders)
+
+        assert result["order_id"].tolist() == [2]
+
+    def test_filters_on_amount_regardless_of_status(self):
+        # A zero-amount order marked COMPLETED is still a system error, while a
+        # positive CANCELLED order is not removed by this rule.
+        orders = pd.DataFrame(
+            {
+                "order_id": [1, 2],
+                "total_amount": [0.0, 15.99],
+                "status": ["COMPLETED", "CANCELLED"],
+            }
+        )
+
+        result = filter_valid_orders(orders)
+
+        assert result["order_id"].tolist() == [2]
+
+    def test_does_not_modify_input(self):
+        orders = pd.DataFrame({"order_id": [1, 2], "total_amount": [-1.0, 1.0]})
+
+        filter_valid_orders(orders)
+
+        assert len(orders) == 2
