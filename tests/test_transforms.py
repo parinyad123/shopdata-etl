@@ -1,10 +1,12 @@
 """Unit tests for transforms.py, using in-memory data only (no database)."""
 
 import pandas as pd
+import pytest
 
 from transforms import (
     DEFAULT_EMAIL,
     clean_customers,
+    convert_to_usd,
     deduplicate_customers,
     fill_missing_emails,
     filter_valid_orders,
@@ -165,3 +167,93 @@ class TestFilterValidOrders:
         filter_valid_orders(orders)
 
         assert len(orders) == 2
+
+
+class TestConvertToUsd:
+    RATES = pd.DataFrame(
+        {
+            "currency": ["EUR", "EUR", "JPY"],
+            "rate_to_usd": [1.1, 1.12, 0.007],
+            "date": ["2023-05-01", "2023-05-02", "2023-05-01"],
+        }
+    )
+
+    def test_uses_rate_for_the_order_date(self):
+        orders = pd.DataFrame(
+            {
+                "order_date": ["2023-05-01", "2023-05-02", "2023-05-01"],
+                "total_amount": [200.0, 300.0, 10000.0],
+                "currency": ["EUR", "EUR", "JPY"],
+            }
+        )
+
+        result = convert_to_usd(orders, self.RATES)
+
+        assert result["usd_amount"].tolist() == [220.0, 336.0, 70.0]
+
+    def test_usd_amount_is_unchanged(self):
+        orders = pd.DataFrame(
+            {"order_date": ["2023-05-01"], "total_amount": [150.0], "currency": ["USD"]}
+        )
+
+        result = convert_to_usd(orders, self.RATES)
+
+        assert result["usd_amount"].tolist() == [150.0]
+
+    def test_missing_currency_is_treated_as_usd(self):
+        orders = pd.DataFrame(
+            {"order_date": ["2023-05-01"], "total_amount": [120.0], "currency": [None]}
+        )
+
+        result = convert_to_usd(orders, self.RATES)
+
+        assert result["currency"].tolist() == ["USD"]
+        assert result["usd_amount"].tolist() == [120.0]
+
+    def test_currency_without_rate_for_date_is_treated_as_usd(self):
+        orders = pd.DataFrame(
+            {"order_date": ["2023-05-10"], "total_amount": [89.0], "currency": ["EUR"]}
+        )
+
+        result = convert_to_usd(orders, self.RATES)
+
+        assert result["usd_amount"].tolist() == [89.0]
+
+    def test_normalises_currency_codes(self):
+        orders = pd.DataFrame(
+            {"order_date": ["2023-05-01"], "total_amount": [100.0], "currency": [" eur "]}
+        )
+
+        result = convert_to_usd(orders, self.RATES)
+
+        assert result["currency"].tolist() == ["EUR"]
+        assert result["usd_amount"].tolist() == [110.0]
+
+    def test_keeps_one_row_per_order(self):
+        orders = pd.DataFrame(
+            {
+                "order_id": [1, 2, 3],
+                "order_date": ["2023-05-01", None, "2023-05-09"],
+                "total_amount": [1.0, 2.0, 3.0],
+                "currency": ["EUR", "USD", "GBP"],
+            }
+        )
+
+        result = convert_to_usd(orders, self.RATES)
+
+        assert result["order_id"].tolist() == [1, 2, 3]
+
+    def test_duplicate_rates_raise_error(self):
+        rates = pd.DataFrame(
+            {
+                "currency": ["EUR", "EUR"],
+                "rate_to_usd": [1.1, 1.2],
+                "date": ["2023-05-01", "2023-05-01"],
+            }
+        )
+        orders = pd.DataFrame(
+            {"order_date": ["2023-05-01"], "total_amount": [100.0], "currency": ["EUR"]}
+        )
+
+        with pytest.raises(pd.errors.MergeError):
+            convert_to_usd(orders, rates)

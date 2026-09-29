@@ -8,6 +8,7 @@ tested in isolation from I/O and from Prefect.
 import pandas as pd
 
 DEFAULT_EMAIL = "unknown@domain.com"
+BASE_CURRENCY = "USD"
 
 
 def standardize_phone(phones: pd.Series) -> pd.Series:
@@ -70,3 +71,33 @@ def filter_valid_orders(orders: pd.DataFrame) -> pd.DataFrame:
     """
     amounts = pd.to_numeric(orders["total_amount"], errors="coerce")
     return orders[amounts > 0].reset_index(drop=True)
+
+
+def convert_to_usd(orders: pd.DataFrame, rates: pd.DataFrame) -> pd.DataFrame:
+    """Add a usd_amount column using the exchange rate for each order_date.
+
+    Currencies are normalised to upper case. An order whose currency is
+    missing, or has no rate for its order_date, is assumed to already be in
+    USD (rate 1.0). Raises pandas.errors.MergeError if the rates table has
+    more than one rate for the same currency and date, since that would
+    duplicate orders in the join.
+    """
+    currency = (
+        orders["currency"]
+        .astype("string")
+        .str.strip()
+        .str.upper()
+        .replace("", pd.NA)
+        .fillna(BASE_CURRENCY)
+    )
+    lookup = rates.assign(
+        currency=rates["currency"].astype("string").str.strip().str.upper()
+    ).rename(columns={"date": "order_date"})[["currency", "order_date", "rate_to_usd"]]
+
+    merged = orders.assign(currency=currency).merge(
+        lookup, on=["currency", "order_date"], how="left", validate="many_to_one"
+    )
+    rate = merged["rate_to_usd"].fillna(1.0)
+    return merged.assign(
+        usd_amount=(merged["total_amount"] * rate).round(2)
+    ).drop(columns="rate_to_usd")
