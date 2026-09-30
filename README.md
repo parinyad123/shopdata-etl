@@ -130,4 +130,9 @@ sqlite3 -readonly -header -column analytics.db ".read clv_report.sql"
 | 9 | Ian Malcolm | 0 | 0.00 | 2023-08 |
 | 10 | Jane Doe | 0 | 0.00 | 2023-09 |
 
-**Charlie Brown ranks first only because of the missing exchange rate** (issue 6). His single order is 25,000 JPY on 2023-05-10, a date with no rate, so the business rule counts it as $25,000. At the most recent available JPY rate (0.0072) it would be about $180, which would place him sixth. Backfilling the source exchange rates for 2023-05-06 onward should be the first follow-up before this report is used for decisions.
+**Charlie Brown ranks first only because of the missing exchange rate** (issue 6):
+
+- His single order is 25,000 JPY on 2023-05-10, a date with no rate in `vw_exchange_rates`.
+- The fallback rule treats it as USD (rate 1.0), so it is counted as $25,000.
+- At the most recent available JPY rate (0.0072) it would be about $180, which would place him sixth.
+- **Action:** backfill the source exchange rates from 2023-05-06 onward before this report is used for decisions.
